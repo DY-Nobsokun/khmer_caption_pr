@@ -53,7 +53,7 @@
       }catch(error){finish(error);}
     });
   }
-  async function transcribeAudio(audio,token,stage,key){return root.GeminiTranscribeCore.transcribe({audio,token,stage,apiKey:key.trim()||await loadKey(),transport});}
+  async function transcribeAudio(audio,token,stage,key){return root.GeminiTranscribeCore.transcribe({audio,token,stage,apiKey:String(key==null?'':key).trim()||await loadKey(),transport});}
   function browserFile(types) {
     return new Promise((resolve,reject)=>{
       const input=document.createElement('input'); input.type='file'; input.accept=types.map(x=>'.'+x).join(',');
@@ -84,7 +84,7 @@
     try {
       snapshot=await operation('Create recording snapshot',()=>temporary.createFile(name+(mp4?'.mp4':'.wav'),{overwrite:false}));
       await operation('Write recording snapshot',()=>snapshot.write(data,{format:uxp.storage.formats.binary}));token.check();
-      if(!mp4) return {name:file.name,data,path:snapshot.nativePath,dispose:()=>snapshot.delete()};
+      if(!mp4) return {name:file.name,data,path:snapshot.nativePath,playbackUrl:fs.getFsUrl(snapshot),dispose:()=>snapshot.delete()};
       wav=await operation('Create extracted audio file',()=>temporary.createFile(name+'-audio.wav',{overwrite:false}));
       addon=await engine();token.check();
       await operation('Start MP4 audio extraction',()=>addon.start(wav.nativePath,snapshot.nativePath,'prepare'));conversionRunning=true;
@@ -103,7 +103,7 @@
       const audio=await operation('Read extracted WAV audio',()=>wav.read({format:uxp.storage.formats.binary}));token.check();
       root.LocalCaptionCore.wavInfo(audio);
       await remove(snapshot);snapshot=null;
-      return {name:file.name,data:audio,path:wav.nativePath,dispose:()=>wav.delete(),extracted:true};
+      return {name:file.name,data:audio,path:wav.nativePath,playbackUrl:fs.getFsUrl(wav),dispose:()=>wav.delete(),extracted:true};
     } catch(e) {
       // Never remove files while a native decoder may still be reading them.
       if(conversionRunning){try{addon.cancel();}catch(_){}}else{await remove(wav);await remove(snapshot);}
