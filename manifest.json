@@ -1,0 +1,40 @@
+{
+  "manifestVersion": 6,
+  "id": "app.sthang.captions.workspace.dev",
+  "name": "Khmer Captions",
+  "version": "0.3.1",
+  "main": "index.html",
+  "host": {
+    "app": "premierepro",
+    "minVersion": "26.3.0"
+  },
+  "addon": {
+    "name": "sthang_caption_service.uxpaddon"
+  },
+  "requiredPermissions": {
+    "enableAddon": true,
+    "localFileSystem": "request",
+    "network": {
+      "domains": [
+        "https://generativelanguage.googleapis.com"
+      ]
+    }
+  },
+  "entrypoints": [
+    {
+      "type": "panel",
+      "id": "captionWorkspace",
+      "label": {
+        "default": "Khmer Captions"
+      },
+      "minimumSize": {
+        "width": 340,
+        "height": 240
+      },
+      "preferredDockedSize": {
+        "width": 460,
+        "height": 700
+      }
+    }
+  ]
+}

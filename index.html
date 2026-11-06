@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Khmer Captions — Local Caption Workspace</title>
+  <link rel="stylesheet" href="preview.css">
+</head>
+<body>
+  <main class="app">
+    <header><div><p class="eyebrow">PREMIERE WORKSPACE</p><h1>Khmer captions<span class="accent">.</span></h1></div><span class="badge">GEMINI + LOCAL KFA</span></header>
+    <p class="preview-notice">Gemini transcribes your audio online. KFA generates word timing locally. Review the wording and timing before exporting captions.</p>
+    <div class="workspace">
+      <aside class="setup">
+        <div class="section-heading"><span class="step">01</span><h2>Generate</h2></div>
+        <div class="sequence"><div><strong id="audio-name">Choose your recording</strong><span id="audio-info">WAV or MP4 &middot; 0.1&ndash;120 seconds</span></div></div>
+        <button id="choose-audio" class="secondary full">Choose WAV or MP4</button>
+        <p id="media-status" class="helper" role="status" aria-live="polite">No recording selected.</p>
+        <p id="model-info" class="helper">Gemini 3.5 Transcribe &middot; Khmer verbatim transcription</p>
+        <details id="ai-connection" open><summary>AI connection</summary><label for="api-key">Gemini API key</label><input id="api-key" type="password" autocomplete="off" placeholder="Enter your Gemini API key"><div class="timing-tools"><button id="save-key" class="secondary">Save key</button><button id="forget-key" class="text-button">Forget key</button></div><p id="key-status" class="helper">Your key can be saved in Adobe secure storage. Google API usage is billed to your account.</p></details>
+        <label for="offset">Sequence start offset (seconds)</label><input id="offset" type="text" inputmode="decimal" value="0" aria-label="Sequence start offset in seconds">
+        <label for="caption-length">Caption length</label><select id="caption-length"><option value="word">One word</option><option value="short" selected>Short phrases (about 3–5 words)</option><option value="long">Long phrases (about 6–10 words)</option><option value="sentence">Whole sentence</option></select>
+        <p class="helper">Sentences may split at long pauses or when too long. Shared Khmer word groups stay intact.</p>
+        <button id="apply-grouping" class="secondary full">Apply grouping</button>
+        <p id="grouping-status" class="helper" role="status" aria-live="polite">Applied automatically after timing. Regrouping reuses word timing and resets approvals.</p>
+        <p class="helper">MP4 audio is extracted locally. WAV input must be mono 16 kHz PCM. Automatic sequence audio and caption-track insertion are still pending.</p>
+        <button id="generate" class="primary full">Transcribe with Gemini</button>
+        <p id="transcription-status" class="helper" role="status" aria-live="polite">Press Transcribe to send audio to Google. KFA timing runs locally afterward.</p>
+        <div id="processing" hidden><div class="progress-heading"><span id="stage">Preparing…</span><button id="cancel" class="text-button">Cancel</button></div><progress id="progress" aria-label="Transcription progress"></progress></div>
+        <p class="workflow-note"><span class="accent">●</span> Review here, style in Premiere.<br><span class="muted">SRT includes text and timing.</span></p>
+      </aside>
+      <section class="review" aria-labelledby="review-heading">
+        <div class="review-header"><div class="section-heading"><span class="step">02</span><h2 id="review-heading">Review captions</h2></div><span id="counts" class="muted"></span></div>
+        <div class="review-toolbar"><label class="filter"><input id="only-review" type="checkbox"> Needs review only</label><button id="next" class="secondary">Approve &amp; next</button><button id="approve-all" class="secondary">Approve all</button></div>
+        <label for="transcript">Transcript &middot; one caption per line</label><textarea id="transcript" lang="km" rows="5" placeholder="Your transcription will appear here…"></textarea>
+        <button id="rebuild" class="secondary">Apply transcript edits</button>
+        <button id="align-now" class="secondary">Update timing</button>
+        <p id="timing-status" class="helper" role="status" aria-live="polite">Word timing is generated automatically after transcription.</p>
+        <div class="timing-tools"><button id="alignment-request" class="secondary">Save KFA request</button><button id="import-alignment" class="secondary">Import KFA timing</button><button id="save-draft" class="secondary">Save draft</button><button id="load-draft" class="secondary">Open draft</button><button id="clear" class="text-button">Clear workspace</button></div>
+        <div class="caption-pages"><button id="page-prev" class="secondary">Previous page</button><span id="page-info" class="helper" aria-live="polite"></span><button id="page-next" class="secondary">Next page</button></div>
+        <div id="captions" class="caption-list" aria-label="Editable captions"></div>
+        <div class="export-bar"><div><strong>Ready when you are</strong><p id="approval-summary" class="helper"></p></div><button id="export" class="secondary">Export reviewed SRT</button></div>
+        <p class="timeline-note">Automatic caption-track placement still requires API validation.</p>
+      </section>
+    </div>
+    <footer><p id="notice" role="status" aria-live="polite">Choose a WAV or MP4, then press Transcribe to send its audio to Google.</p><span>Audio is sent to Google only when you press Transcribe.</span></footer>
+  </main>
+  <script src="local-paths.js"></script>
+  <script src="local-core.js"></script>
+  <script src="gemini-transcribe.js"></script>
+  <script src="local-host.js"></script>
+  <script src="workspace.js"></script>
+</body>
+</html>
