@@ -6,6 +6,42 @@
     const $=id=>document.getElementById(id),audio=$('review-audio');
     let rows=[],selected=null,duration=0,ready=false,locked=false,url=null,segment=null,disposed=false,timer=null,hasSource=false;
     const listeners=[];
+    const dragListeners=[];
+    let dragSurface=null;
+    function bind(target,name,handler){if(!target.addEventListener)return;target.addEventListener(name,handler);dragListeners.push([target,name,handler]);}
+    function dragSeek(event){
+      if(!dragSurface||!ready||locked)return;
+      const bounds=dragSurface.getBoundingClientRect();
+      const width=bounds.width||bounds.right-bounds.left||dragSurface.clientWidth;
+      const left=Number.isFinite(bounds.left)?bounds.left:bounds.x;
+      if(!width||!Number.isFinite(event.clientX)||!Number.isFinite(left))return;
+      if(event.preventDefault)event.preventDefault();
+      seek(Math.max(0,Math.min(1,(event.clientX-left)/width))*duration/1000);
+    }
+    for(const id of ['audio-seek','waveform']){
+      const surface=$(id);
+      const start=event=>{
+        if(!ready||locked||event.button>0||typeof surface.getBoundingClientRect!=='function')return;
+        pause();dragSurface=surface;
+        if(surface.setPointerCapture&&event.pointerId!==undefined){try{surface.setPointerCapture(event.pointerId);}catch(_){}}
+        dragSeek(event);
+      };
+      bind(surface,'pointerdown',start);bind(surface,'mousedown',start);
+      bind(surface,'pointermove',dragSeek);
+      bind(surface,'mousemove',dragSeek);
+      bind(surface,'pointerup',event=>{dragSeek(event);dragSurface=null;});
+      bind(surface,'mouseup',event=>{dragSeek(event);dragSurface=null;});
+      bind(surface,'click',event=>{if(!ready||locked)return;pause();dragSurface=surface;dragSeek(event);dragSurface=null;});
+      bind(surface,'wheel',event=>{
+        if(!ready||locked)return;
+        const delta=event.deltaY||event.deltaX||0;if(!delta)return;
+        event.preventDefault();pause();seek(Number(audio.currentTime)+(delta>0?1:-1)*(event.shiftKey ? 0.1 : 1));
+      });
+    }
+    bind(document,'mousemove',dragSeek);
+    bind(document,'pointermove',dragSeek);
+    const endDrag=event=>{dragSeek(event);dragSurface=null;};
+    for(const name of ['mouseup','pointerup','pointercancel'])bind(document,name,endDrag);
     function listen(name,fn){audio.addEventListener(name,fn);listeners.push([name,fn]);}
     function stopTimer(){if(timer!==null){root.clearInterval(timer);timer=null;}}
     function artwork(){try{if(root.PanelControls)root.PanelControls.refresh();}catch(error){console.warn('Playback artwork:',error);}}
@@ -13,6 +49,7 @@
     function pause(){stopTimer();try{if(typeof audio.pause==='function')audio.pause();}catch(_){}playLabel('Play');}
     function controls(){
       for(const id of ['audio-toggle','audio-seek','audio-prev','audio-next','audio-speed','audio-loop','audio-follow'])$(id).disabled=!ready||locked;
+      const slider=$('audio-seek');if(slider.setAttribute){slider.setAttribute('aria-disabled',String(!ready||locked));slider.tabIndex=ready&&!locked?0:-1;}
       const c=rows.find(c=>c.id===selected);
       $('play-caption').disabled=!ready||locked||!c||!Number.isFinite(c.start)||!Number.isFinite(c.end)||c.end<=c.start;
       artwork();
@@ -35,9 +72,13 @@
       $('playing-caption').textContent=c?'Caption '+c.id+' of '+rows.length:'Caption preview';
       $('audio-clock').textContent=format(ms)+' / '+format(duration);
       $('audio-seek').value=String(Math.round(ms));
+      const percent=duration?Math.max(0,Math.min(100,ms/duration*100)):0;
+      $('audio-seek-fill').style.width=percent+'%';$('audio-seek-thumb').style.left=percent+'%';
+      if($('audio-seek').setAttribute){$('audio-seek').setAttribute('aria-valuemax',String(duration));$('audio-seek').setAttribute('aria-valuenow',String(Math.round(ms)));$('audio-seek').setAttribute('aria-valuetext',format(ms)+' of '+format(duration));}
       if(onFrame)onFrame(c);
     }
     function reset(){
+      dragSurface=null;
       hasSource=false;pause();ready=false;segment=null;duration=0;
       audio.removeAttribute('src');if(typeof audio.load==='function')audio.load();
       if(url&&root.URL&&root.URL.revokeObjectURL)root.URL.revokeObjectURL(url);url=null;
@@ -75,12 +116,21 @@
     }
     $('audio-toggle').onclick=()=>{if(audio.paused){segment=null;play();}else pause();};
     $('audio-seek').oninput=()=>seek(Number($('audio-seek').value)/1000);
+    bind($('audio-seek'),'input',$('audio-seek').oninput);
+    bind($('audio-seek'),'change',$('audio-seek').oninput);
+    bind($('audio-seek'),'keydown',event=>{
+      if(!ready||locked)return;
+      const seconds=Number(audio.currentTime),step=event.shiftKey ? 0.1 : 1;
+      const destinations={ArrowRight:seconds+step,ArrowLeft:seconds-step,Home:0,End:duration/1000};
+      if(!Object.prototype.hasOwnProperty.call(destinations,event.key))return;
+      event.preventDefault();pause();seek(destinations[event.key]);
+    });
     $('audio-speed').onchange=()=>{try{audio.playbackRate=Number($('audio-speed').value);}catch(_){notice('This runtime does not support changing playback speed.');}};
     $('play-caption').onclick=()=>{const c=rows.find(c=>c.id===selected);if(!c||!Number.isFinite(c.start)||!Number.isFinite(c.end))return;seek(c.start/1000);segment={start:c.start,end:c.end};play();};
     $('audio-loop').onchange=()=>{segment=null;};
     for(const [id,delta]of [['audio-prev',-1],['audio-next',1]])$(id).onclick=()=>{const timed=rows.filter(c=>Number.isFinite(c.start)&&Number.isFinite(c.end));const ms=Number(audio.currentTime)*1000,current=captionAt(timed,ms),next=timed.findIndex(c=>c.start>ms);const index=current?timed.indexOf(current):delta>0?(next<0?timed.length-1:next):next<0?timed.length-1:next-1;const c=timed[Math.max(0,Math.min(timed.length-1,current?index+delta:index))];if(c)seek(c.start/1000);};
     controls();
-    return {load,reset,pause,seek,update(next,id,busy){rows=next;selected=id;locked=busy;if(busy)pause();controls();frame();},dispose(){disposed=true;reset();for(const [name,fn]of listeners)audio.removeEventListener(name,fn);}};
+    return {load,reset,pause,seek,update(next,id,busy){rows=next;selected=id;locked=busy;if(busy){dragSurface=null;pause();}controls();frame();},dispose(){disposed=true;reset();for(const [name,fn]of listeners)audio.removeEventListener(name,fn);for(const [target,name,fn]of dragListeners)if(target.removeEventListener)target.removeEventListener(name,fn);}};
   }
   const api={create,captionAt,format};root.CaptionPlayback=api;if(typeof module!=='undefined')module.exports=api;
 })(globalThis);

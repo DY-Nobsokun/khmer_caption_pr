@@ -46,6 +46,9 @@
   function paint(el){
     if(!panelDocument)return;
     let color=null;
+    if(el.classList.contains('caption-nav'))color='neutral';
+    if(el.classList.contains('caption-delete'))color='coral';
+    if(el.classList.contains('save-changes'))color='green';
     if(['generate'].includes(el.id)||el.classList.contains('retime'))color='orange';
     if(['choose-audio','export','audio-toggle'].includes(el.id))color='blue';
     if(['choose-timeline','approve-all'].includes(el.id)||el.classList.contains('approve'))color='green';

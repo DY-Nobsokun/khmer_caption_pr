@@ -114,10 +114,11 @@ function panel(){
     async transcribeAudio(){transcriptions++;return {fullText:'hello',model:'gemini'};},
     async alignAudio(){throw new Error('Timing unavailable in this fixture');}};
   const timeline={available:true,async chooseTimelineAudio(){timelines++;return {name:'Nested edits',path:'timeline.wav',playbackUrl:'plugin-temp:/timeline.wav',data:wav(),kind:'timeline',timeline:{offsetMs:10000},async dispose(){released++;}};}};
+  const doc=new Element();Object.assign(doc,{getElementById:id=>e[id],createElement:()=>new Element(),querySelectorAll:()=>Object.values(e)});
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../workspace.js'),'utf8'),{
     LocalCaptionCore:core,LocalCaptionHost:host,TimelineAudioHost:timeline,CaptionPlayback:require('../caption-playback.js'),
-    document:{getElementById:id=>e[id],createElement:()=>new Element(),querySelectorAll:()=>Object.values(e)}});
-  return {e,host,timeline,stats:()=>({uploads,timelines,transcriptions,released})};
+    document:doc});
+  return {e,host,timeline,doc,stats:()=>({uploads,timelines,transcriptions,released})};
 }
 test('timeline selection sets offset without transcribing; uploading still works and resets timeline offset',async()=>{
   const f=panel();await f.e['choose-timeline'].onclick();assert.equal(f.e.offset.value,'10');
@@ -145,32 +146,172 @@ test('UXP null empty transcript does not block either source picker',async()=>{
   }
 });
 
-test('null offset remains invalid and null caption text and timing edits clear safely',async()=>{
-  const f=await timedPanel();f.e['approve-all'].onclick();
-  f.e.offset.value=null;f.e.offset.oninput();assert.equal(f.e.export.disabled,true);
-  const editor=f.e['selected-editor'].children[0],text=editor.children[2],times=editor.children[3];
-  const start=times.children[0].children[1].children[0];start.value=null;start.oninput();
-  assert.equal(f.e.export.disabled,true);
-  text.value=null;text.oninput();assert.equal(f.e.transcript.value,'');
-  assert.equal(f.e.export.disabled,true);
+test('null offset remains invalid and empty inline wording is rejected',async()=>{
+  const f=await timedPanel();f.e.offset.value=null;f.e.offset.oninput();assert.equal(f.e.export.disabled,true);
+  const form=editRow(f);form.children[0].value=null;finishRow(form);
+  assert.match(form.children[3].textContent,/wording/);assert.equal(f.e.transcript.value,'hello');
 });
 
-test('chosen recording plays with running caption preview and edits update review safely',async()=>{
+test('chosen recording plays and inline editing pauses playback',async()=>{
   const f=await timedPanel(),audio=f.e['review-audio'];
-  assert.equal(audio.src,'plugin-temp:/upload.wav');assert.equal(f.e['audio-toggle'].disabled,false);
   f.e['audio-toggle'].onclick();assert.equal(audio.paused,false);
-  audio.currentTime=.5;audio.emit('timeupdate');
-  assert.equal(f.e['subtitle-text'].textContent,'hello');assert.equal(f.e['playing-caption'].textContent,'Caption 1 of 1');
-  assert.equal(f.e['audio-clock'].textContent,'00:00.500 / 00:01.000');
-  const text=f.e['selected-editor'].children[0].children[2];text.value='corrected wording';text.oninput();
-  assert.equal(audio.paused,true);assert.equal(f.e.transcript.value,'corrected wording');assert.equal(f.e.export.disabled,true);
+  const form=editRow(f);assert.equal(audio.paused,true);
+  form.children[0].value='corrected wording';finishRow(form);
+  assert.equal(f.e.transcript.value,'corrected wording');assert.equal(f.e.export.disabled,true);
 });
+test('inline wording edits preserve timing through approval and SRT export',async()=>{
+  const f=await timedPanel();let form=editRow(f);
+  form.children[1].children[0].value='0.125';form.children[2].children[0].value='0.875';finishRow(form);
+  f.e['approve-all'].onclick();form=editRow(f);form.children[0].value='corrected wording';finishRow(form);
+  assert.equal(f.e.export.disabled,true);
+  let saved;f.host.saveText=async(name,value)=>{saved=value;return true;};
+  f.e['selected-editor'].children[0].children[0].onclick();
+  await f.e.export.onclick();assert.match(saved,/00:00:00,125 --> 00:00:00,875\ncorrected wording/);
+});
+
 test('workflow navigation exposes exactly one independent page at a time',()=>{
   const f=panel();
   for(const view of ['generate','review','export','generate']){
     f.e['view-'+view].onclick();
     for(const name of ['generate','review','export'])assert.equal(f.e[name+'-page'].hidden,name!==view);
   }
+});
+
+test('caption pages stay selected with playback follow enabled and reset list position',async()=>{
+  const f=panel();await f.e['choose-audio'].onclick();
+  f.e.transcript.value=Array.from({length:11},(_,i)=>'caption '+(i+1)).join('\n');
+  f.e.rebuild.onclick();f.e['audio-follow'].checked=true;
+  const form=editRow(f);form.children[1].children[0].value='0';form.children[2].children[0].value='0.9';finishRow(form);
+  f.e['audio-toggle'].onclick();assert.equal(f.e['review-audio'].paused,false);
+  f.e.captions.scrollTop=200;f.e['page-next'].onclick();
+  assert.equal(f.e['review-audio'].paused,true);
+  assert.equal(f.e['page-info'].textContent,'6-10 of 11 captions');
+  assert.match(f.e.captions.children[0].textContent,/6/);
+  assert.equal(f.e.captions.scrollTop,0);assert.equal(f.e.captions.children.length,5);
+  f.e['review-audio'].emit('timeupdate');
+  assert.equal(f.e['page-info'].textContent,'6-10 of 11 captions');
+  f.e['page-next'].onclick();assert.equal(f.e['page-info'].textContent,'11-11 of 11 captions');
+  assert.equal(f.e['page-next'].disabled,true);
+  f.e['page-prev'].onclick();f.e['page-prev'].onclick();
+  assert.equal(f.e['page-info'].textContent,'1-5 of 11 captions');
+  assert.equal(f.e['page-prev'].disabled,true);
+});
+
+test('Delete key still removes rows with compact caption actions',async()=>{
+  const f=await timedPanel();f.e['view-review'].onclick();
+  f.doc.handlers.keydown[0]({key:'Delete',target:{tagName:'DIV'},preventDefault(){},stopPropagation(){}});
+  assert.equal(f.e.transcript.value,'');assert.equal(f.e['selected-editor'].childElementCount,0);
+});
+
+test('document Delete shortcut removes the clicked selection after its row is rendered again',()=>{
+  const f=panel();f.e['view-review'].onclick();
+  f.e.transcript.value='first\nsecond\nthird';f.e.rebuild.onclick();
+  f.e.captions.children[1].onclick();
+  const event={key:'Delete',target:{tagName:'DIV'},preventDefault(){},stopPropagation(){}};
+  f.doc.handlers.keydown[0]({...event,target:{tagName:'INPUT'}});
+  assert.equal(f.e.transcript.value,'first\nsecond\nthird');
+  f.doc.handlers.keydown[0](event);
+  assert.equal(f.e.transcript.value,'first\nthird');
+  f.doc.handlers.keydown[0]({...event,repeat:true});
+  assert.equal(f.e.transcript.value,'first\nthird');
+});
+
+test('double clicking edits a caption inline; Enter saves and Escape cancels',async()=>{
+  const f=await timedPanel();
+  f.e.captions.children[0].onclick();f.e.captions.children[0].onclick();
+  const form=()=>f.e.captions.children[0].children[0];
+  assert.equal(form().className,'inline-caption-editor');
+  const key=key=>({key,preventDefault(){},stopPropagation(){}});
+  form().children[0].value='inline correction';
+  form().children[1].children[0].value='0.2';
+  form().children[2].children[0].value='0.8';
+  form().handlers.keydown[0](key('Enter'));
+  assert.equal(f.e.transcript.value,'inline correction');
+  const check=editRow(f);assert.equal(check.children[1].children[0].value,'0.2');assert.equal(check.children[2].children[0].value,'0.8');
+  check.handlers.keydown[0](key('Escape'));
+  f.e.captions.children[0].handlers.dblclick[0]();
+  form().children[0].value='discard this';form().handlers.keydown[0](key('Escape'));
+  assert.equal(f.e.transcript.value,'inline correction');
+  f.e.captions.children[0].handlers.dblclick[0]();
+  form().children[2].children[0].value='0.1';form().handlers.keydown[0](key('Enter'));
+  assert.match(form().children[3].textContent,/valid/);
+  assert.equal(f.e.transcript.value,'inline correction');
+});
+
+test('double clicking playback preview edits current caption text and timing',async()=>{
+  const f=await timedPanel(),audio=f.e['review-audio'];audio.currentTime=.5;
+  f.e['subtitle-preview'].handlers.dblclick[0]();
+  assert.equal(audio.paused,true);assert.equal(f.e['subtitle-text'].hidden,true);
+  const form=f.e['preview-editor'].children[0];
+  form.children[0].value='preview correction';form.children[1].children[0].value='0.2';form.children[2].children[0].value='0.8';finishRow(form);
+  assert.equal(f.e.transcript.value,'preview correction');
+  assert.equal(f.e['preview-editor'].hidden,true);assert.equal(f.e['subtitle-text'].hidden,false);
+  assert.equal(f.e['subtitle-text'].textContent,'preview correction');
+  f.e['subtitle-preview'].handlers.dblclick[0]();
+  const cancelled=f.e['preview-editor'].children[0];cancelled.children[0].value='discard';
+  cancelled.handlers.keydown[0]({key:'Escape',preventDefault(){},stopPropagation(){}});
+  assert.equal(f.e.transcript.value,'preview correction');
+  audio.currentTime=0;f.e['subtitle-preview'].handlers.dblclick[0]();
+  assert.equal(f.e['preview-editor'].hidden,true);assert.match(f.e.notice.textContent,/Seek to a caption/);
+});
+
+test('Apply grouping stays visible before timing and after caption edits',async()=>{
+  const f=panel();
+  assert.equal(f.e['apply-grouping'].hidden,false);assert.equal(f.e['apply-grouping'].disabled,true);
+  assert.equal(f.e['grouping-status'].hidden,false);
+  const timed=await timedPanel();assert.equal(timed.e['apply-grouping'].disabled,false);
+  const form=editRow(timed);form.children[0].value='corrected';finishRow(form);
+  assert.equal(timed.e['apply-grouping'].hidden,false);assert.equal(timed.e['apply-grouping'].disabled,false);
+  assert.equal(timed.e['grouping-status'].hidden,false);
+  assert.match(timed.e['grouping-status'].textContent,/Update timing/);
+});
+
+test('Apply grouping updates all caption views after transcription and after edits',async()=>{
+  const f=panel();let alignments=0;
+  f.host.transcribeAudio=async()=>({fullText:'one two three four five six',model:'gemini'});
+  f.host.alignAudio=async(path,text)=>{
+    alignments++;
+    return {schemaVersion:1,audioSha256:core.sha256(wav()),fullText:text,engine:'kfa-local',directAlignment:true,
+      words:text.split(/\s+/).map((text,i)=>({text,startMs:i*140,endMs:i*140+100}))};
+  };
+  await f.e['choose-audio'].onclick();await f.e.generate.onclick();
+  f.e['caption-length'].value='word';await f.e['apply-grouping'].onclick();
+  assert.equal(alignments,1);assert.equal(f.e.counts.textContent,'6 captions');
+  assert.equal(f.e['page-info'].textContent,'1-5 of 6 captions');
+  f.e['review-audio'].currentTime=.05;f.e['review-audio'].emit('timeupdate');
+  assert.equal(f.e['subtitle-text'].textContent,'one');
+  f.e['caption-length'].value='sentence';await f.e['apply-grouping'].onclick();
+  assert.equal(alignments,1);assert.equal(f.e.counts.textContent,'1 captions');
+  assert.equal(f.e['subtitle-text'].textContent,'one two three four five six');
+  const form=editRow(f);form.children[0].value='ONE two three four five six';finishRow(form);
+  f.e['caption-length'].value='word';await f.e['apply-grouping'].onclick();
+  assert.equal(alignments,2);assert.equal(f.stats().transcriptions,0);
+  assert.equal(f.e.counts.textContent,'6 captions');assert.equal(f.e['subtitle-text'].textContent,'ONE');
+  assert.equal(f.e.export.disabled,true);assert.match(f.e['approval-summary'].textContent,/0 of 6 approved/);
+});
+
+test('both caption editors provide Save changes without duplicate caption text',async()=>{
+  const f=await timedPanel();let form=editRow(f);
+  assert.equal(form.children[4].textContent,'Save changes');
+  form.children[0].value='row save';
+  assert.equal(form.children.length,5);
+  form.children[4].onclick();assert.equal(f.e.transcript.value,'row save');
+  f.e['review-audio'].currentTime=.5;f.e['subtitle-preview'].handlers.dblclick[0]();
+  form=f.e['preview-editor'].children[0];assert.equal(form.children[4].textContent,'Save changes');
+  form.children[0].value='';form.children[4].onclick();assert.match(form.children[3].textContent,/wording/);
+  form.children[0].value='preview save';form.children[4].onclick();
+  assert.equal(f.e.transcript.value,'preview save');assert.equal(f.e['preview-editor'].hidden,true);
+});
+
+test('compact actions contain only approve and previous/next caption controls',()=>{
+  const f=panel();f.e.transcript.value='first\nsecond\nthird';f.e.rebuild.onclick();
+  const actions=()=>f.e['selected-editor'].children[0];
+  const navigation=()=>actions().children[1].children;
+  assert.equal(actions().children.length,2);assert.equal(actions().children[0].textContent,'Approve caption');
+  assert.equal(navigation()[0].disabled,true);
+  navigation()[1].onclick();assert.equal(navigation()[0].disabled,false);
+  navigation()[1].onclick();assert.equal(navigation()[1].disabled,true);
+  navigation()[0].onclick();assert.equal(f.e.transcript.value,'first\nsecond\nthird');
 });
 test('timeline selection cannot replace existing transcript and failure preserves uploaded audio',async()=>{
   const f=panel();await f.e['choose-audio'].onclick();
@@ -218,7 +359,7 @@ test('transcript edits block export and invalidate approval and old timing',asyn
 test('regrouping uses existing alignment and resets approval',async()=>{
   const f=await timedPanel();f.e['approve-all'].onclick();
   f.host.alignAudio=async()=>{throw new Error('Regrouping must not call KFA');};
-  f.e['caption-length'].value='word';f.e['apply-grouping'].onclick();
+  f.e['caption-length'].value='word';await f.e['apply-grouping'].onclick();
   assert.equal(f.e.export.disabled,true);assert.match(f.e['grouping-status'].textContent,/timing was reused/);
   f.e['approve-all'].onclick();assert.equal(f.e.export.disabled,false);
 });
@@ -261,3 +402,9 @@ test('invalid offset blocks export and clearing twice releases timeline audio',a
   await f.e['choose-timeline'].onclick();await f.e.clear.onclick();
   assert.equal(f.stats().released,1);assert.equal(f.e.generate.disabled,true);assert.equal(f.e.offset.value,'0');
 });
+
+function editRow(f,index=0){
+  f.e.captions.children[index].handlers.dblclick[0]();
+  return f.e.captions.children[index].children[0];
+}
+function finishRow(form){form.handlers.keydown[0]({key:'Enter',preventDefault(){},stopPropagation(){}});}

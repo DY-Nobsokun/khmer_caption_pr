@@ -72,11 +72,16 @@ progress{width:100%;height:10px;accent-color:#02b7d4}
 .subtitle-preview>span{font-size:10px;color:#b5e5dd}
 .subtitle-preview p{font:20px/1.7 "Kantumruy Pro","Noto Sans Khmer","Leelawadee UI",sans-serif;margin:5px 0;overflow-wrap:anywhere}
 .audio-engine{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
-.waveform{height:35px;display:flex;align-items:center;justify-content:space-between;margin:8px 0 0}
+.waveform{height:35px;display:flex;align-items:center;justify-content:space-between;margin:8px 0 0;cursor:pointer;touch-action:none}
 .waveform:empty{display:none}
 .waveform>span{display:block;flex:1;margin-right:2px;min-width:1px;max-height:32px;background:#29c6c1;border-radius:3px}
 .listen-card>label{font-size:10px;margin:5px 0 0}
-#audio-seek{display:block;width:100%;height:20px;min-height:20px;max-height:20px;margin:0;padding:0;accent-color:#00acd2}
+#audio-seek{position:relative;display:block;width:100%;height:32px;min-height:32px;margin:0;padding:0;cursor:ew-resize;touch-action:none;user-select:none}
+.seek-track{position:absolute;left:0;right:0;top:14px;height:5px;background:#a5d8d0;border-radius:4px;pointer-events:none}
+#audio-seek-fill{height:5px;width:0;background:#02b7d4;border-radius:4px;pointer-events:none}
+#audio-seek-thumb{position:absolute;left:0;top:5px;width:22px;height:22px;margin-left:-11px;border:3px solid #00a8c3;border-radius:50%;background:#fff;pointer-events:none}
+#audio-seek:focus{outline:2px solid #007ba5;outline-offset:2px}
+#audio-seek[aria-disabled=true]{opacity:.5}
 .audio-clock{text-align:center;background:#cbf3e8;border-radius:10px;padding:3px;font-size:12px;font-weight:700;margin:5px 0 8px;font-variant-numeric:tabular-nums}
 .playback-buttons{display:flex;align-items:center}
 .playback-buttons>.ui-button{flex:1;min-height:36px;padding:5px}
@@ -94,11 +99,18 @@ input[type=checkbox]{margin:0 5px 0 0;accent-color:#02aaab}
 .caption-pages{display:flex;align-items:center;justify-content:space-between;margin:10px 0}
 .caption-pages>.ui-button{font-size:10px;padding:4px 8px;min-height:30px}
 .caption-pages .helper{font-size:10px;margin:0}
-.caption-list{position:relative;max-height:240px;overflow-y:auto;border:3px solid #a7f0e3;border-radius:15px;padding:6px;background:#eafff8}
+.caption-list{position:relative;border:3px solid #a7f0e3;border-radius:15px;padding:6px;background:#eafff8}
 .caption-row{display:block;text-align:left;width:100%;height:auto;min-height:40px;white-space:normal;overflow-wrap:anywhere;margin:0 0 5px;padding:7px 8px;background:#fff;border:1px solid #d2ebe7;font:13px/1.9 "Kantumruy Pro","Noto Sans Khmer","Leelawadee UI",sans-serif}
 .caption-row.selected{background:#fff8d3;border:2px solid #06bcec}
 .caption-row[data-playing=true]{background:#dbfbdc;border-color:#21ba94}
+.inline-caption-editor{cursor:default;user-select:text}
+.inline-caption-editor label{display:inline-block;width:48%;margin-right:2%}
+.inline-caption-editor input{border:1px solid #8ec6d2!important}
+#preview-editor{text-align:left}#preview-editor label,#preview-editor .helper{color:#d4fff6}
 .editor-card{margin-top:12px}.editor-card:empty{display:none}
+.caption-navigation{display:flex;flex-wrap:wrap;margin-top:10px}
+.caption-navigation>.ui-button{margin:0 7px 7px 0;font-size:12px}
+.caption-delete{margin-top:10px;color:#fff;background:#ff6250;font-size:12px}
 .caption{padding:0;margin:0;border:0;background:transparent}
 .caption h2{font-size:16px;margin:0 0 5px}
 .caption-meta{display:flex;justify-content:space-between;font-size:10px;margin-bottom:5px}
@@ -151,3 +163,8 @@ header{background-image:url("assets/header-wave.png");background-size:100% 100%}
 .subtitle-preview p{font-size:20px;line-height:1.7}
 .caption-row{font-size:13px;line-height:1.9}
 textarea{font-size:17px;line-height:1.9}
+
+.caption-action-bar{margin:12px 0}.caption-actions{display:flex;flex-wrap:wrap;align-items:center}.caption-actions>.approve{margin:0 7px 7px 0}.caption-actions>.caption-navigation{margin-top:0}
+.inline-caption-editor textarea{font-family:"Kantumruy Pro","Noto Sans Khmer","Leelawadee UI";font-size:17px;line-height:1.9;font-weight:400;font-style:normal;height:88px;min-height:88px;padding:10px}
+.inline-caption-editor .helper,#preview-editor .helper{font-family:"Segoe UI";font-size:11px;line-height:1.6;margin:8px 0}
+.save-changes{margin-top:8px;background:#b4ec40;color:#234b00;font-size:12px}

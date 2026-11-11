@@ -41,6 +41,41 @@ test('loaded snapshot drives subtitle, seek position and caption following',()=>
     f.player.seek(10);assert.equal(f.audio.currentTime,2);
   }finally{f.player.dispose();}
 });
+test('dragging waveform or recording slider seeks and updates the preview',()=>{
+  const f=fixture();try{
+    const event=clientX=>({clientX,button:0,preventDefault(){}});
+    for(const id of ['waveform','audio-seek']){
+      const surface=f.get(id);surface.getBoundingClientRect=()=>({left:100,width:200});
+      surface.handlers.pointerdown[0](event(150));assert.equal(f.audio.currentTime,.5);
+      surface.handlers.pointermove[0](event(220));assert.equal(f.audio.currentTime,1.2);
+      assert.equal(f.get('subtitle-text').textContent,'Second caption');
+      surface.handlers.pointerup[0](event(400));assert.equal(f.audio.currentTime,2);
+      surface.handlers.pointermove[0](event(150));assert.equal(f.audio.currentTime,2);
+    }
+    f.get('audio-seek').value='500';f.get('audio-seek').emit('change');assert.equal(f.audio.currentTime,.5);
+    f.player.update(rows,1,true);
+    f.get('waveform').handlers.pointerdown[0](event(220));assert.equal(f.audio.currentTime,.5);
+  }finally{f.player.dispose();}
+});
+
+test('custom seek bar supports mouse drag, wheel and keyboard verification',()=>{
+  const f=fixture();try{
+    const bar=f.get('audio-seek');bar.getBoundingClientRect=()=>({left:100,right:300});
+    const event={clientX:150,button:0,preventDefault(){}};
+    bar.handlers.mousedown[0](event);
+    bar.handlers.mousemove[0]({...event,clientX:220});
+    assert.equal(f.audio.currentTime,1.2);
+    assert.equal(f.get('audio-seek-thumb').style.left,'60%');
+    bar.handlers.mouseup[0]({...event,clientX:220});
+    bar.handlers.wheel[0]({...event,deltaY:-100});
+    assert.ok(Math.abs(f.audio.currentTime-.2)<.0001);
+    bar.handlers.keydown[0]({...event,key:'ArrowRight'});
+    assert.equal(f.get('subtitle-text').textContent,'Second caption');
+    bar.handlers.keydown[0]({...event,key:'Home'});assert.equal(f.audio.currentTime,0);
+    bar.handlers.wheel[0]({...event,deltaY:100,shiftKey:true});assert.equal(f.audio.currentTime,.1);
+  }finally{f.player.dispose();}
+});
+
 test('play selected caption stops at end; loop returns to selected start',async()=>{
   const f=fixture();try{
     f.get('play-caption').onclick();assert.equal(f.audio.currentTime,.1);

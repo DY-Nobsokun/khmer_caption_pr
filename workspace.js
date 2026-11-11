@@ -4,9 +4,55 @@
   const core=root.LocalCaptionCore,host=root.LocalCaptionHost,$=id=>document.getElementById(id);
   let source=null,media=null,captions=[],active=null,pendingEdits=false,selected=1,resultModel='',page=0,wordAnchors=[],appliedGroupingMode='short';
   const createButton=()=>root.PanelControls?root.PanelControls.createButton(document):document.createElement('div');
-  const pageSize=12;
+  const pageSize=5;
   let currentView='generate';
   let player=null;
+  let followedCaption=null;
+  let inlineCaption=null,lastRowClick=null,lastRowClickTime=0;
+  let previewEditing=false;
+  function inlineEditor(c,compact,onDone){
+    compact.textContent='';compact.setAttribute('role','group');
+    const form=document.createElement('div');form.className='inline-caption-editor';
+    form.addEventListener('click',event=>event.stopPropagation());
+    form.addEventListener('dblclick',event=>event.stopPropagation());
+    const wording=document.createElement('textarea');wording.value=c.text;wording.lang='km';wording.setAttribute('aria-label','Caption text');
+    const fields={};
+    form.appendChild(wording);
+    for(const name of ['start','end']){
+      const label=document.createElement('label');label.textContent=name==='start'?'Start (seconds)':'End (seconds)';
+      const input=document.createElement('input');input.type='text';input.value=c[name]===null?'':String(c[name]/1000);input.setAttribute('inputmode','decimal');input.setAttribute('aria-label',label.textContent);
+      fields[name]=input;label.appendChild(input);form.appendChild(label);
+    }
+    const feedback=document.createElement('p');feedback.className='helper';feedback.textContent='Enter to save · Escape to cancel';form.appendChild(feedback);
+    const saveChanges=()=>{
+      try{
+        const updated={...c,text:fieldText(wording).trim(),approved:false};
+        if(!updated.text)throw new Error('Enter caption wording.');
+        for(const name of ['start','end']){
+          const raw=fieldText(fields[name]).trim(),n=Number(raw);
+          if(raw&&(!Number.isFinite(n)||n<0))throw new Error('Enter valid times in seconds.');
+          updated[name]=raw?Math.round(n*1000):null;
+        }
+        if(updated.start!==null&&updated.end!==null){
+          core.validateCaptions([{...updated,approved:true}],source?source.durationMs:Infinity);
+          const i=captions.indexOf(c),before=captions[i-1],after=captions[i+1];
+          if((before&&before.end!==null&&updated.start<before.end)||(after&&after.start!==null&&updated.end>after.start))throw new Error('Adjust overlapping caption times.');
+        }
+        if(updated.start!==c.start||updated.end!==c.end)updated.timingSource='manual';
+        Object.assign(c,updated);invalidateAnchors('Caption edited. Update timing before changing caption length.');
+        $('transcript').value=captions.map(item=>item.text).join('\n');inlineCaption=null;if(onDone)onDone();render();notice('Caption edits saved. Review and approve when ready.');
+      }catch(error){feedback.textContent=core.errorMessage(error);}
+    };
+    const save=createButton();save.className='ui-button save-changes';save.textContent='Save changes';save.onclick=saveChanges;form.appendChild(save);
+    form.addEventListener('keydown',event=>{
+      event.stopPropagation();if(event.isComposing)return;
+      if(event.key==='Escape'){event.preventDefault();inlineCaption=null;if(onDone)onDone();render();return;}
+      if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();saveChanges();}
+    });
+    compact.appendChild(form);
+    if(root.PanelControls)root.PanelControls.refresh();
+    if(typeof wording.focus==='function')wording.focus();
+  }
   // Bind navigation before optional playback or artwork can fail to initialize.
   for(const view of ['generate','review','export']){
     const button=$('view-'+view);
@@ -15,6 +61,18 @@
   }
   showView('generate');
   try{if(root.CaptionPlayback)player=root.CaptionPlayback.create({document,notice,onFrame:followPlayback});}catch(error){console.warn('Audio review initialization:',error);$('playback-state').textContent='Playback unavailable';$('playback-help').textContent='Audio player could not start: '+String(error&&error.message||error);}
+  $('subtitle-preview').addEventListener('dblclick',()=>{
+    if(active||pendingEdits||previewEditing)return;
+    const ms=Number($('review-audio').currentTime)*1000;
+    const c=captions.find(item=>Number.isFinite(item.start)&&Number.isFinite(item.end)&&item.start<=ms&&ms<item.end);
+    if(!c){notice('Seek to a caption before editing the preview.');return;}
+    if(player)player.pause();
+    selected=c.id;inlineCaption=c.id;previewEditing=true;
+    const index=filtered().findIndex(item=>item.id===c.id);if(index>=0)page=Math.floor(index/pageSize);
+    render();
+    const host=$('preview-editor');host.hidden=false;$('subtitle-text').hidden=true;
+    inlineEditor(c,host,()=>{previewEditing=false;host.textContent='';host.hidden=true;$('subtitle-text').hidden=false;});
+  });
   function showView(view){
     currentView=view;
     for(const name of ['generate','review','export']){
@@ -29,7 +87,9 @@
   }
   function followPlayback(c){
     document.querySelectorAll('.caption-row').forEach(row=>{row.setAttribute('data-playing',String(!!c&&row.id==='row-'+c.id));});
-    if(!$('audio-follow').checked||!c)return;
+    if(!$('audio-follow').checked||!c||$('review-audio').paused){followedCaption=null;return;}
+    if(followedCaption===c.id)return;
+    followedCaption=c.id;
     const focused=document.activeElement;
     if(focused&&['INPUT','TEXTAREA'].includes(focused.tagName)&&focused.id!=='audio-seek')return;
     const index=filtered().findIndex(row=>row.id===c.id);
@@ -52,17 +112,19 @@
     if(!source||!wordAnchors.length)throw new Error('Run Update timing to obtain word timings before regrouping.');
     if(pendingEdits)throw new Error('Apply transcript edits and update timing before regrouping.');
     const mode=groupingMode(),grouped=core.groupCaptions(wordAnchors,mode,source.durationMs);
+    if(player)player.pause();
     captions=grouped;appliedGroupingMode=mode;$('transcript').value=captions.map(c=>c.text).join('\n');page=0;selected=1;
     $('grouping-status').textContent=`${captions.length} captions grouped. Review and approve again. Word timing was reused.`;
+    $('timing-status').textContent=`${captions.length} captions ready. Review and approve the new grouping.`;
   }
   function summary(){
-    if(player){try{player.update(captions,selected,!!active||pendingEdits);}catch(error){console.warn('Audio review update:',error);try{player.dispose();}catch(_){}player=null;$('playback-state').textContent='Playback unavailable';}}
+    if(player){try{player.update(captions,selected,!!active||pendingEdits||previewEditing);}catch(error){console.warn('Audio review update:',error);try{player.dispose();}catch(_){}player=null;$('playback-state').textContent='Playback unavailable';}}
     $('view-generate').setAttribute('data-complete',String(captions.length>0));
     $('view-review').setAttribute('data-complete',String(captions.length>0&&captions.every(c=>c.approved)));
     $('choose-timeline').disabled=!!active||!root.TimelineAudioHost||!root.TimelineAudioHost.available;
-    $('apply-grouping').disabled=!!active||pendingEdits||!wordAnchors.length;
-    $('apply-grouping').hidden=!wordAnchors.length;
-    $('grouping-status').hidden=!wordAnchors.length;
+    $('apply-grouping').disabled=!!active||!source||!transcript()||inlineCaption!==null;
+    $('apply-grouping').hidden=false;
+    $('grouping-status').hidden=false;
     $('counts').textContent=`${captions.length} captions`;
     $('approval-summary').textContent=`${captions.filter(c=>c.approved).length} of ${captions.length} approved · ${captions.filter(c=>c.start===null||c.end===null).length} need timing`;
     $('next').disabled=!!active||pendingEdits||!captions.some(c=>!c.approved);
@@ -83,6 +145,32 @@
     finally{active=null;try{busy(false);render();}catch(error){notice(core.errorMessage(error));$('media-status').textContent=core.errorMessage(error);console.error('Caption controls:',error);}}
   }
   function safe(fn){return()=>job(fn);}
+  function deleteCaption(c){
+    if(active||pendingEdits||previewEditing)return;
+    const index=captions.indexOf(c);if(index<0)return;
+    if(player)player.pause();
+    captions.splice(index,1);
+    captions.forEach((item,i)=>{item.id=i+1;});
+    const next=captions[Math.min(index,captions.length-1)];selected=next?next.id:1;
+    invalidateAnchors('Caption deleted. Update timing before changing caption length.');
+    $('transcript').value=captions.map(item=>item.text).join('\n');
+    const visible=filtered(),position=visible.findIndex(item=>item.id===selected);
+    if(position>=0)page=Math.floor(position/pageSize);
+    render();
+    const target=$('row-'+selected);if(target&&typeof target.focus==='function')target.focus();
+    notice('Caption deleted. Remaining caption times preserved.');
+  }
+  function deleteKey(event,c){
+    if(event.key!=='Delete'||event.repeat||event.isComposing)return;
+    const target=event.target;
+    if(target&&(['INPUT','TEXTAREA','SELECT'].includes(target.tagName)||target.isContentEditable))return;
+    if(!c||active||pendingEdits)return;
+    event.preventDefault();event.stopPropagation();deleteCaption(c);
+  }
+  const selectedDeleteKey=event=>{
+    if(currentView==='review')deleteKey(event,captions.find(c=>c.id===selected));
+  };
+  if(document.addEventListener)document.addEventListener('keydown',selectedDeleteKey);
   function approve(c){
     if(pendingEdits)throw new Error('Apply transcript edits before approving.');
     if(!source)throw new Error('Choose matching audio first.');
@@ -103,37 +191,42 @@
       const compact=createButton();compact.className='ui-button caption-row'+(c.id===selected?' selected':'');compact.id='row-'+c.id;compact.disabled=!!active;
       compact.setAttribute('aria-pressed',String(c.id===selected));
       compact.textContent=`${c.approved?'✓':'○'}  ${c.id}   ${c.start===null?'—':formatTime(c.start)} – ${c.end===null?'—':formatTime(c.end)}   ${c.text}`;
-      compact.onclick=()=>{selected=c.id;render();if(player&&c.start!==null)player.seek(c.start/1000);};list.appendChild(compact);
+      const edit=()=>{if(active||pendingEdits||previewEditing)return;if(player)player.pause();selected=c.id;inlineCaption=c.id;lastRowClick=null;render();};
+      compact.onclick=()=>{
+        if(previewEditing)return;
+        if(inlineCaption===c.id)return;
+        const now=Date.now();if(lastRowClick===c.id&&now-lastRowClickTime<500){edit();return;}
+        lastRowClick=c.id;lastRowClickTime=now;inlineCaption=null;
+        selected=c.id;render();const focused=$('row-'+selected);if(focused&&typeof focused.focus==='function')focused.focus();if(player&&c.start!==null)player.seek(c.start/1000);
+      };list.appendChild(compact);
+      compact.addEventListener('dblclick',edit);
+      compact.addEventListener('keydown',event=>deleteKey(event,c));
+      if(inlineCaption===c.id&&!previewEditing)inlineEditor(c,compact);
     }
     const chosen=captions.find(c=>c.id===selected)||visible[0];
     if(chosen){selected=chosen.id;}
     for(const c of chosen?[chosen]:[]){
-      const row=document.createElement('article');row.className='caption'+(c.id===selected?' selected':'');
-      const title=document.createElement('h2');title.textContent=`Edit caption #${c.id}`;row.appendChild(title);
-      const meta=document.createElement('div');meta.className='caption-meta';
-      const number=document.createElement('span');number.className='caption-number';number.textContent=String(c.id).padStart(2,'0');
-      const state=document.createElement('span');state.className='review-state'+(c.approved?' approved':'');state.textContent=c.approved?'Approved':c.start===null||c.end===null?'Needs timing':'Needs review';meta.appendChild(number);meta.appendChild(state);
-      const text=document.createElement('textarea');text.lang='km';text.rows=2;text.value=c.text;text.setAttribute('aria-label',`Caption ${c.id} text`);
-      const times=document.createElement('div');times.className='times';const fields={};
-      const button=createButton();button.className='ui-button approve';button.textContent='Approve wording & timing';button.disabled=!!active||c.approved||pendingEdits;
-      const retime=createButton();retime.className='ui-button retime';retime.textContent='Update timing';retime.disabled=!!active||pendingEdits;
-      retime.onclick=()=>{$('align-now').onclick();};
-      const feedback=document.createElement('p');feedback.className='caption-feedback';feedback.setAttribute('role','status');
-      feedback.textContent=pendingEdits?'Apply transcript edits above before approving.':c.start===null||c.end===null?'Enter start and end in seconds (for example 0 and 2.5), or import KFA timing.':'';
-      const changed=()=>{if(player)player.pause();c.approved=false;state.textContent=c.start===null||c.end===null?'Needs timing':'Needs review';state.className='review-state';button.disabled=!!active||pendingEdits;feedback.textContent=c.start===null||c.end===null?'Edits saved in this workspace. Enter both times or Update timing before approving.':'Edits saved in this workspace. Review wording and times, then approve.';const compact=$('row-'+c.id);if(compact)compact.textContent=`○  ${c.id}   ${c.start===null?'—':formatTime(c.start)} – ${c.end===null?'—':formatTime(c.end)}   ${c.text}`;summary();};
-      for(const name of ['start','end']){
-        const field=document.createElement('div');field.className='timing-field';
-        const label=document.createElement('label');label.textContent=name==='start'?'Start (seconds)':'End (seconds)';
-        const input=document.createElement('input');input.type='text';input.disabled=!!active;input.setAttribute('inputmode','decimal');input.className='timing-input';input.id=`caption-${c.id}-${name}`;label.setAttribute('for',input.id);input.setAttribute('aria-label',`Caption ${c.id} ${name} in seconds`);input.placeholder=name==='start'?'e.g. 0.000':'e.g. 2.500';input.value=c[name]===null?'':String(c[name]/1000);fields[name]=input;
-        input.oninput=()=>{invalidateAnchors('Timing edited. Update timing before changing caption length.');const raw=fieldText(input).trim(),n=Number(raw);c[name]=raw&&Number.isFinite(n)&&n>=0?Math.round(n*1000):null;c.timingSource='manual';changed();};
-        const shell=document.createElement('div');shell.className='field-shell';input.setAttribute('uxp-quiet','true');shell.appendChild(input);
-        field.appendChild(label);field.appendChild(shell);times.appendChild(field);
+      const row=document.createElement('div');row.className='caption-actions';
+      const button=createButton();button.className='ui-button approve';button.textContent='Approve caption';button.disabled=!!active||c.approved||pendingEdits||inlineCaption!==null;
+      button.onclick=()=>{try{approve(c);}catch(error){notice(core.errorMessage(error));}};
+      row.appendChild(button);editor.appendChild(row);
+      const navigation=document.createElement('div');navigation.className='caption-navigation';
+      for(const [direction,label] of [[-1,'Previous caption'],[1,'Next caption']]){
+        const nav=createButton();nav.className='ui-button caption-nav';nav.textContent=label;
+        const target=captions[captions.indexOf(c)+direction];
+        nav.disabled=!!active||pendingEdits||inlineCaption!==null||!target;
+        nav.onclick=()=>{
+          if(active||pendingEdits||!target)return;
+          if(player)player.pause();
+          selected=target.id;
+          const index=filtered().findIndex(item=>item.id===selected);
+          if(index>=0)page=Math.floor(index/pageSize);
+          render();
+          if(player&&target.start!==null)player.seek(target.start/1000);
+        };
+        navigation.appendChild(nav);
       }
-      text.oninput=()=>{invalidateAnchors('Wording edited. Update timing before changing caption length.');c.text=fieldText(text);c.start=null;c.end=null;c.timingSource='missing';fields.start.value='';fields.end.value='';$('transcript').value=captions.map(x=>x.text).join('\n');changed();};
-      text.disabled=!!active||pendingEdits;
-      text.onfocus=()=>{selected=c.id;};
-      button.onclick=()=>{try{approve(c);}catch(e){feedback.textContent=core.errorMessage(e);notice(core.errorMessage(e));}};
-      row.appendChild(meta);row.appendChild(text);row.appendChild(times);row.appendChild(button);row.appendChild(retime);row.appendChild(feedback);editor.appendChild(row);
+      row.appendChild(navigation);
     }
     if(!list.childElementCount){const p=document.createElement('p');p.className='helper';p.textContent=captions.length?'All captions approved. Turn off the filter to see them.':'Transcribe audio or enter a transcript to begin.';list.appendChild(p);}
     summary();
@@ -206,11 +299,26 @@
   $('cancel').onclick=()=>{if(active){active.cancel();$('cancel').disabled=true;$('stage').textContent='Cancelling… Waiting for native cleanup.';}};
   $('transcript').oninput=()=>{if(pendingEdits)return;invalidateAnchors('Wording changed. Update timing before regrouping.');pendingEdits=true;$('timing-status').textContent='Wording changed. Apply edits, then press Update timing.';captions.forEach(c=>{c.approved=false;});render();notice('Apply transcript edits to rebuild caption rows and clear old timing.');};
   $('rebuild').onclick=()=>{invalidateAnchors('Transcript edits applied. Update timing before regrouping.');captions=core.untimedCaptions(transcript());pendingEdits=false;selected=1;page=0;render();notice('Caption rows rebuilt. Add or import timing.');};
-  $('caption-length').onchange=()=>{setText('grouping-status',wordAnchors.length?'Press Apply grouping to use this caption length. Approvals will reset.':'This caption length will be applied after KFA timing.');};
-  $('apply-grouping').onclick=()=>{if(active)return;try{applyGroups();render();notice('Caption grouping updated using existing word timing.');}catch(error){$('grouping-status').textContent=core.errorMessage(error);notice(core.errorMessage(error));}};
+  $('caption-length').onchange=()=>{setText('grouping-status',wordAnchors.length?'Press Apply grouping to use this caption length. Approvals will reset.':'Press Apply grouping to generate word timing and apply this caption length.');};
+  $('apply-grouping').onclick=safe(async token=>{
+    if(inlineCaption!==null)throw new Error('Save or cancel caption edits before regrouping.');
+    if(!source||!transcript())throw new Error('Transcribe audio or enter a transcript before regrouping.');
+    try{
+      if(!wordAnchors.length||pendingEdits)await automaticTiming(token);
+      else applyGroups();
+      render();notice('Caption grouping updated. Review and approve the new captions.');
+    }catch(error){$('grouping-status').textContent=core.errorMessage(error);throw error;}
+  });
   $('only-review').onchange=()=>{page=0;render();};
-  $('page-prev').onclick=()=>{if(!active&&page>0){page--;render();}};
-  $('page-next').onclick=()=>{if(!active&&(page+1)*pageSize<filtered().length){page++;render();}};
+  function changePage(direction){
+    const next=page+direction,visible=filtered();
+    if(active||next<0||next*pageSize>=visible.length)return;
+    if(player)player.pause();
+    page=next;selected=visible[page*pageSize].id;
+    render();$('captions').scrollTop=0;
+  }
+  $('page-prev').onclick=()=>changePage(-1);
+  $('page-next').onclick=()=>changePage(1);
   $('approve-all').onclick=()=>{
     if(active)return;
     try {
@@ -243,7 +351,7 @@
     $('transcript').value=d.fullText;captions=restored;wordAnchors=restoredAnchors;appliedGroupingMode=core.groupingModes.includes(d.groupingMode)?d.groupingMode:'short';$('caption-length').value=appliedGroupingMode;$('grouping-status').textContent=wordAnchors.length?'Saved word timing restored. You can regroup without another request.':'Update timing to enable caption regrouping.';page=0;pendingEdits=false;resultModel=typeof d.model==='string'?d.model:'';$('offset').value=String(d.offsetMs/1000);render();notice('Draft restored. Review wording and timing before approving again.');
   });
   $('clear').onclick=safe(async()=>{if(transcript()||captions.length){$('transcript').value='';captions=[];wordAnchors=[];page=0;pendingEdits=false;render();notice('Transcript cleared. Selected audio preserved. Press Clear workspace again to release it.');return;}if(player)player.reset();await release(media);media=null;source=null;wordAnchors=[];$('timing-status').textContent='Word timing is generated automatically after transcription.';$('media-status').textContent='No recording selected.';$('audio-name').textContent='Choose your recording';$('audio-info').textContent='WAV or MP4, 0.1-120 seconds';$('offset').value='0';resultModel='';summary();notice('Workspace cleared.');});
-  root.disposeCaptionWorkspace=()=>{if(active)active.cancel();if(player)player.dispose();};
+  root.disposeCaptionWorkspace=()=>{if(document.removeEventListener)document.removeEventListener('keydown',selectedDeleteKey);if(active)active.cancel();if(player)player.dispose();};
   if(root.addEventListener)root.addEventListener('beforeunload',root.disposeCaptionWorkspace);
   render();busy(false);showView(currentView);
   root.captionWorkspaceReady=true;
