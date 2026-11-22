@@ -80,13 +80,19 @@ def _map_words_individually(full_text, words, normalize):
     return mapped
 
 
-def map_words_to_original(full_text, words, normalize, cancelled=None):
+def map_words_to_original(full_text, words, normalize=None, cancelled=None):
     """Preserve exact original spelling and measured acoustic boundaries.
 
     Normalization can expand/reorder a Khmer cluster across a tokenizer boundary.
     If individual words cannot map, keep only shared, stable prefix boundaries
     and merge adjacent whole acoustic anchors. Never split or estimate times.
     """
+    if normalize is None:
+        # Match tokenize_phonemize's complete preprocessing, including Khmer
+        # character replacements (e.g. U+17B2 -> U+17B1). khmer_normalize alone
+        # only reorders clusters and rejects these equivalent spellings.
+        from khmernormalizer import normalize as kfa_normalize
+        normalize = kfa_normalize
     canonical = lambda text: re.sub(r'\s', '', normalize(text))
     normalized = canonical(full_text)
     if not normalized or normalized != canonical(''.join(w['text'] for w in words)):
@@ -194,8 +200,7 @@ def main():
     result = worker.run_kfa(args.wav, request['fullText'], None)
     if result.get('engine') != 'kfa-local' or result.get('directAlignment') is not True:
         raise RuntimeError('KFA did not return direct alignment evidence')
-    from khmernormalizer.khnormal import khmer_normalize
-    mapped = map_words_to_original(request['fullText'], result['words'], khmer_normalize)
+    mapped = map_words_to_original(request['fullText'], result['words'])
     payload = {
         'schemaVersion': 1, 'audioSha256': digest, 'fullText': request['fullText'],
         'engine': 'kfa-local', 'directAlignment': True, 'words': mapped,

@@ -51,7 +51,7 @@
     if(el.classList.contains('save-changes'))color='green';
     if(['generate'].includes(el.id)||el.classList.contains('retime'))color='orange';
     if(['choose-audio','export','audio-toggle'].includes(el.id))color='blue';
-    if(['choose-timeline','approve-all'].includes(el.id)||el.classList.contains('approve'))color='green';
+    if(['choose-timeline','approve-all','generate-text'].includes(el.id)||el.classList.contains('approve'))color='green';
     if(el.id==='cancel')color='coral';
     if(String(el.id||'').startsWith('view-'))color=el.getAttribute('aria-pressed')==='true'?'orange':el.getAttribute('data-complete')==='true'?'green':'neutral';
     if(!color)return;
@@ -59,7 +59,7 @@
     const viewport=panelDocument.body.clientWidth||460;
     let width=150,height=42;
     if(String(el.id||'').startsWith('view-')){width=viewport<380?96:viewport<440?112:viewport<600?130:150;height=48;}
-    else if(['generate','export'].includes(el.id)){width=viewport<380?260:320;height=56;}
+    else if(['generate','export','generate-text'].includes(el.id)){width=viewport<380?260:320;height=56;}
     else if(['choose-audio','choose-timeline'].includes(el.id)){width=viewport<380?110:viewport<500?155:190;height=48;}
     else if(el.id==='approve-all'){width=120;height=40;}
     else if(el.classList.contains('approve')){width=200;height=42;}

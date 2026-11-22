@@ -21,7 +21,7 @@
         <p class="helper">Timeline: mark In/Out in the active sequence (0.1–120 seconds). Includes all audible tracks and nested audio; mute unwanted tracks first.</p>
         <div class="sequence"><span class="source-icon" aria-hidden="true">&#9654;</span><div><strong id="audio-name">Choose your recording</strong><span id="audio-info">WAV or MP4 &middot; 0.1&ndash;120 seconds</span></div></div>
         <p id="media-status" class="helper" role="status" aria-live="polite">No recording selected.</p>
-        </section><p id="model-info" class="helper">Gemini 3.5 Transcribe &middot; Khmer verbatim transcription</p>
+        </section><p id="model-info" class="helper">Gemini 3.5 Transcribe &middot; Khmer + English verbatim transcription</p>
         <section id="ai-connection" class="disclosure" data-disclosure="true"><div class="ui-button disclosure-toggle" role="button" tabindex="0" aria-expanded="true">AI connection<span class="disclosure-arrow">&#8722;</span></div><div class="disclosure-body"><label for="api-key">Gemini API key</label><div class="field-shell"><input uxp-quiet="true" id="api-key" type="password" autocomplete="off" placeholder="Enter your Gemini API key"></div><div class="timing-tools"><div id="save-key" class="ui-button secondary" role="button" tabindex="0" aria-disabled="false">Save key</div><div id="forget-key" class="ui-button text-button" role="button" tabindex="0" aria-disabled="false">Forget key</div></div><p id="key-status" class="helper">Your key can be saved in Adobe secure storage. Google API usage is billed to your account.</p></div></section>
         <section class="disclosure advanced" data-disclosure="false"><div class="ui-button disclosure-toggle" role="button" tabindex="0" aria-expanded="false">Advanced options · sequence offset<span class="disclosure-arrow">+</span></div><div class="disclosure-body" hidden><label for="offset">Sequence start offset (seconds)</label><div class="field-shell"><input uxp-quiet="true" id="offset" type="text" inputmode="decimal" value="0" aria-label="Sequence start offset in seconds"></div></div></section>
         <section class="grouping-card"><label for="caption-length">Caption length</label><select id="caption-length"><option value="word">One word</option><option value="short" selected>Short phrases (about 3–5 words)</option><option value="long">Long phrases (about 6–10 words)</option><option value="sentence">Whole sentence</option></select>
@@ -58,7 +58,8 @@
         <div id="captions" class="caption-list" aria-label="Editable captions"></div>
         <div id="selected-editor" class="caption-action-bar" aria-label="Selected caption actions"></div>
       </section>
-      <section id="export-page" class="export-page" data-page="export" hidden style="display:none" aria-labelledby="export-heading"><h2 id="export-heading">Export captions</h2><p class="helper">Approve caption wording and timing in Review before saving your SRT.</p>
+      <section id="export-page" class="export-page" data-page="export" hidden style="display:none" aria-labelledby="export-heading"><h2 id="export-heading">Export captions</h2><p class="helper">Approve caption wording and timing in Review before generating text layers or saving your SRT.</p>
+        <div class="export-bar"><div><strong>Editable text on your timeline</strong><p class="helper">Create one text graphic per approved caption on a new video track in the active sequence.</p></div><div id="generate-text" class="art-button ui-button secondary" role="button" tabindex="0" aria-disabled="true" data-surface="green" style="width:320px;min-width:320px;max-width:320px;height:56px;min-height:56px;max-height:56px;flex:0 0 320px"><img class="button-art" src="assets/button-green-320x56.png" width="320" height="56" style="width:320px;height:56px" alt="" aria-hidden="true"><span class="button-content">Generate text layers</span></div><p id="text-layer-status" class="helper" role="status" aria-live="polite">Uses caption timing and the sequence start offset. Each click creates a new set.</p></div>
         <div class="export-bar"><div><strong>Ready when you are</strong><p id="approval-summary" class="helper"></p></div><div id="export" class="art-button ui-button secondary" role="button" tabindex="0" aria-disabled="false" data-surface="blue" style="width:320px;min-width:320px;max-width:320px;height:56px;min-height:56px;max-height:56px;flex:0 0 320px"><img class="button-art" src="assets/button-blue-320x56.png" width="320" height="56" style="width:320px;height:56px" alt="" aria-hidden="true"><span class="button-content">Export reviewed SRT</span></div></div>
         <p class="timeline-note">Import your exported SRT into Premiere to create a caption track.</p>
       </section>
@@ -70,6 +71,7 @@
   <script src="gemini-transcribe.js"></script>
   <script src="local-host.js"></script>
   <script src="timeline-audio.js"></script>
+  <script src="timeline-text.js"></script>
   <script src="panel-controls.js"></script>
   <script src="caption-playback.js"></script>
   <script src="workspace.js"></script>

@@ -132,6 +132,7 @@
     $('generate').disabled=!!active||!media||!media.path;
     $('export').disabled=true;
     try{if(!source||pendingEdits)throw new Error();offset();core.validateCaptions(captions,source.durationMs);$('export').disabled=!!active;}catch(_){}
+    $('generate-text').disabled=$('export').disabled||inlineCaption!==null||!root.TimelineTextHost||!root.TimelineTextHost.available;
     if(root.PanelControls){try{root.PanelControls.refresh();}catch(error){console.warn('Control artwork:',error);}}
   }
   function busy(value){if(value&&player)player.pause();document.querySelectorAll('.ui-button,input,select,textarea').forEach(el=>{el.disabled=value;});$('processing').hidden=!value;$('cancel').disabled=!value;summary();}
@@ -340,6 +341,17 @@
   });
   $('import-alignment').onclick=safe(async token=>{if(!source||!transcript())throw new Error('Choose matching audio and transcript first.');const value=await host.openJson();token.check();if(!value)return;wordAnchors=core.importAlignment(value,source,transcript());pendingEdits=false;applyGroups();render();notice('KFA timing imported. Review and approve each caption.');});
   $('export').onclick=safe(async()=>{if(!source||pendingEdits)throw new Error('Apply transcript edits first.');if(await host.saveText('khmer-captions.srt',core.srt(captions,source.durationMs,offset())))notice('Reviewed SRT saved. Import it into Premiere to create a caption track.');});
+  $('generate-text').onclick=safe(async token=>{
+    try{
+      if(!source||pendingEdits)throw new Error('Apply transcript edits and review caption timing first.');
+      if(inlineCaption!==null)throw new Error('Save or cancel caption edits before generating text layers.');
+      if(!root.TimelineTextHost||!root.TimelineTextHost.available)throw new Error('Generate text layers is available inside Premiere.');
+      core.validateCaptions(captions,source.durationMs);
+      const result=await root.TimelineTextHost.generate(captions.map(c=>({...c})),source.durationMs,offset(),token,message=>{setText('stage',message);setText('text-layer-status',message);});
+      const message=`Created ${result.count} editable text layer${result.count===1?'':'s'} on V${result.track}. Select a graphic in Premiere to adjust its text and style.`;
+      setText('text-layer-status',message);notice(message);
+    }catch(error){setText('text-layer-status',core.errorMessage(error));throw error;}
+  });
   $('save-draft').onclick=safe(async()=>{if(!source)throw new Error('Choose audio first.');const rows=pendingEdits?core.untimedCaptions(transcript()):captions;const saved=await host.saveText('khmer-captions-draft.json',JSON.stringify({schemaVersion:1,kind:'sthang-gemini-kfa-caption-draft',source,fullText:rows.map(c=>c.text).join('\n'),model:resultModel,offsetMs:offset(),groupingMode:appliedGroupingMode,anchorAudioSha256:source.sha256,wordAnchors:pendingEdits?[]:wordAnchors,captions:rows},null,2));notice(saved?'Draft saved.':'Draft save cancelled.');});
   $('load-draft').onclick=safe(async token=>{
     if(!source)throw new Error('Choose the matching recording before opening its draft.');if(transcript()||captions.length)throw new Error('Clear the current transcript before opening another draft.');

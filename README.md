@@ -1,6 +1,6 @@
 # Khmer Captions
 
-Version 0.4.1 adds timeline audio alongside the existing WAV/MP4 upload workflow, with automatic WAV export settings. This folder contains the files needed to load the current plugin on this PC.
+Version 0.5.2 enables Khmer + English verbatim transcription so spoken English words can retain their English spelling. It also includes the 0.5.1 fix for **Generate text layers** failing with “Invalid parameter” when creating a new track. The panel includes reviewed SRT export and upload/timeline audio workflows. This folder contains the files needed to load the current plugin on this PC.
 
 In UXP Developer Tool, unload the original plugin before adding this folder's manifest.json, then load it in Premiere Pro 26.3+ on Windows x64. The plugin ID is the same as the original. Enter your Gemini API key in AI connection if needed.
 
@@ -9,6 +9,16 @@ Keep the existing Sthang Studio Python 3.12 runtime, timing site-packages and KF
 Includes the active panel, KFA Python adapters, local configuration and native caption-service addon, plus timeline validation tools and tests. The original sibling project files remain untouched.
 
 Choose WAV or MP4 up to 120 seconds, transcribe with Gemini, review captions and export SRT. Gemini receives the prepared audio when Transcribe is pressed. KFA timing runs locally. Direct caption-track insertion remains unfinished.
+
+Transcription supplies both Khmer (`km-KH`) and English (`en-US`) language hints in verbatim mode. Spoken English words should stay in English, including within Khmer sentences, rather than being translated or transliterated into Khmer. Review and export preserve the returned wording. This setting applies to new transcription requests; existing captions require editing or a new transcription. The request uses the documented [language hints](https://aistudio.google.com/docs/transcribe#language-detection); mixed-language recognition still needs checking with real speech.
+
+After reviewing and approving every caption, open **Export → Generate text layers**. The button creates one editable Premiere text graphic per caption on a new video track in the active sequence. Caption times include the sequence start offset and snap to the nearest sequence frame; a caption that collapses to zero frames must be retimed first. Each click creates another set on a new track. The Review filter does not limit generation. Select a generated graphic in Premiere to edit its text or style. The initial style is white Khmer-capable text near the bottom center, with a shadow. Generation runs locally without a transcription request.
+
+Text generation builds individual Premiere-authored MOGRTs from the bundled native template and calls [SequenceEditor.insertMogrtFromPath](https://developer.adobe.com/premiere-pro/uxp/ppro-reference/classes/sequenceeditor). MOGRT insertion requires an existing track: the panel first creates a new track with a temporary video-only still, then removes the placeholder and its project item before importing text. This avoids depending on the Premiere 27-only MogrtText API while retaining the 26.3 minimum host version. The template snapshot is derived from this PC's installed Adobe **Basic Title.mogrt**; `validation/prepare-text-template.py` documents its preparation. Native project serialization is version-dependent.
+
+Live checks in Premiere 26.3 verified that the previous insertion at a nonexistent track fails while insertion on an existing track succeeds. The corrected module generated two text graphics with the sequence offset and exact frame boundaries, then generated a second set on another new track. The test used a disposable sequence matching the active sequence's settings, verified unchanged audio track count, removed the test sequence, and restored the original sequence. Visual Khmer shaping, manual editing, and project reopening remain separate live checks.
+
+Generated MOGRT files remain in persistent plugin data so imported graphics can retain their source files. Cancellation stops before the next insertion; clips already inserted remain on their track. A failure reports the number inserted and asks you to review that track before retrying. Premiere maintains undo history for the imports and timing edits; a whole batch is not a single undo step.
 
 To use timeline audio, reload this plugin in UXP Developer Tool, open the parent sequence in Premiere, and mark an In/Out range between 0.1 and 120 seconds. Click **Use timeline audio**. It exports the audible sequence mix, including nested audio, so mute music or other unwanted tracks first. It does not isolate a selected clip. WAV export settings are bundled with the plugin and applied automatically; users do not need to locate or select a preset.
 

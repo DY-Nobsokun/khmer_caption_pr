@@ -124,6 +124,7 @@ input[type=checkbox]{margin:0 5px 0 0;accent-color:#02aaab}
 .export-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;padding:12px}
 .export-bar strong{font-size:13px}.export-bar .helper{font-size:10px}
 #export{background:#05b9eb;color:#fff;border:2px solid #fff;border-bottom:4px solid #008dc5;border-radius:25px;min-height:44px;font-size:14px;margin-top:8px;width:100%}
+#generate-text{font-size:14px;margin-top:8px}#text-layer-status{width:100%;margin-top:10px}
 .timeline-note{font-size:10px;color:#517c85;margin:0 4px 8px}
 footer{padding:10px 16px;background:#edfaf4;border-top:1px solid #c6e9df;font-size:10px;color:#51747b}
 footer p{margin:0 0 3px}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden}

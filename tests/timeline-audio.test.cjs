@@ -100,7 +100,7 @@ class Element {
   emit(name){let stopped=false,result;const event={preventDefault(){},stopImmediatePropagation(){stopped=true;}};for(const handler of this.handlers[name]||[]){const value=handler(event);if(value!==undefined)result=value;if(stopped)break;}return result;}
   removeAttribute(name){delete this[name];}
 }
-function panel(){
+function panel(textHost){
   const html=fs.readFileSync(path.join(__dirname,'../index.html'),'utf8');
   const e=Object.fromEntries([...html.matchAll(/id="([^"]+)"/g)].map(m=>[m[1],new Element()]));
   for(const id of ['choose-audio','choose-timeline'])require('../panel-controls.js').enhance(e[id]);
@@ -116,7 +116,7 @@ function panel(){
   const timeline={available:true,async chooseTimelineAudio(){timelines++;return {name:'Nested edits',path:'timeline.wav',playbackUrl:'plugin-temp:/timeline.wav',data:wav(),kind:'timeline',timeline:{offsetMs:10000},async dispose(){released++;}};}};
   const doc=new Element();Object.assign(doc,{getElementById:id=>e[id],createElement:()=>new Element(),querySelectorAll:()=>Object.values(e)});
   vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../workspace.js'),'utf8'),{
-    LocalCaptionCore:core,LocalCaptionHost:host,TimelineAudioHost:timeline,CaptionPlayback:require('../caption-playback.js'),
+    LocalCaptionCore:core,LocalCaptionHost:host,TimelineAudioHost:timeline,TimelineTextHost:textHost,CaptionPlayback:require('../caption-playback.js'),
     document:doc});
   return {e,host,timeline,doc,stats:()=>({uploads,timelines,transcriptions,released})};
 }
@@ -408,3 +408,34 @@ function editRow(f,index=0){
   return f.e.captions.children[index].children[0];
 }
 function finishRow(form){form.handlers.keydown[0]({key:'Enter',preventDefault(){},stopPropagation(){}});}
+
+test('text generation requires review, uses every caption with the timeline offset and unlocks after completion',async()=>{
+  const calls=[],textHost={available:true,async generate(rows,duration,offset,token,stage){
+    token.check();stage('Creating text layer 1 of 2…');calls.push({rows,duration,offset});return {count:rows.length,track:4};
+  }};
+  const f=panel(textHost);assert.equal(f.e['generate-text'].disabled,true);
+  await f.e['choose-timeline'].onclick();
+  f.e['caption-length'].value='word';
+  f.host.transcribeAudio=async()=>({fullText:'hello world',model:'gemini'});
+  f.host.alignAudio=async(wavPath,text)=>({schemaVersion:1,audioSha256:core.sha256(wav()),fullText:text,
+    engine:'kfa-local',directAlignment:true,words:[{text:'hello',startMs:100,endMs:400},{text:'world',startMs:500,endMs:900}]});
+  await f.e.generate.onclick();assert.equal(f.e['generate-text'].disabled,true);
+  f.e['approve-all'].onclick();assert.equal(f.e['generate-text'].disabled,false);
+  f.e['only-review'].checked=true;f.e['only-review'].onchange();
+  await f.e['generate-text'].onclick();
+  assert.equal(calls.length,1);assert.equal(calls[0].rows.length,2);assert.equal(calls[0].rows[0].text,'hello');assert.equal(calls[0].rows[1].text,'world');assert.equal(calls[0].offset,10000);
+  assert.match(f.e['text-layer-status'].textContent,/Created 2 editable text layers on V4/);
+  assert.equal(f.e.processing.hidden,true);assert.equal(f.e['generate-text'].disabled,false);
+  f.e.offset.value='bad';f.e.offset.oninput();assert.equal(f.e['generate-text'].disabled,true);
+  f.e.offset.value='10';f.e.offset.oninput();f.e.transcript.value='edited';f.e.transcript.oninput();
+  assert.equal(f.e['generate-text'].disabled,true);
+  await f.e['generate-text'].onclick();assert.equal(calls.length,1);
+});
+test('text generation failure is shown beside the button and host absence keeps it disabled',async()=>{
+  const browser=panel();assert.equal(browser.e['generate-text'].disabled,true);
+  const f=panel({available:true,async generate(){throw Error('1 text clip(s) were inserted on V4. Review that track before retrying.');}});
+  await f.e['choose-audio'].onclick();f.e.transcript.value='hello';f.e.transcript.oninput();f.e.rebuild.onclick();
+  const form=editRow(f);form.children[1].children[0].value='0.1';form.children[2].children[0].value='0.9';finishRow(form);f.e['approve-all'].onclick();
+  await f.e['generate-text'].onclick();assert.match(f.e['text-layer-status'].textContent,/Review that track before retrying/);
+  assert.equal(f.e.notice.textContent,f.e['text-layer-status'].textContent);assert.equal(f.e['generate-text'].disabled,false);
+});

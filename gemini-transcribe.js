@@ -1,5 +1,5 @@
 'use strict';
-// Dedicated transcription schema, matching scripts/test-gemini-transcribe.cjs.
+// Dedicated transcription schema with Khmer and English language hints.
 // https://ai.google.dev/gemini-api/docs/transcribe
 (function(root){
   const local=root.LocalCaptionCore||(typeof require==='function'&&require('./local-core.js'));
@@ -21,7 +21,9 @@
   async function buildRequest(audio,token=local.cancellation()){
     local.wavInfo(audio);token.check();
     return {model,store:false,input:[{type:'audio',data:await encodeAudio(audio,token),mime_type:'audio/wav'}],
-      generation_config:{transcription_config:{language_codes:['km-KH'],mode:{type:'verbatim'}}}};
+      // Allow English words in mixed Khmer speech to retain their English
+      // spelling instead of biasing every word toward Khmer script.
+      generation_config:{transcription_config:{language_codes:['km-KH','en-US'],mode:{type:'verbatim'}}}};
   }
   function parseResponse(response){
     if(!response||response.status!=='completed')throw new Error('Gemini did not finish transcription. Try again when the service is available.');

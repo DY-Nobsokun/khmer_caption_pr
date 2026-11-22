@@ -88,7 +88,6 @@ def align_recording(wav_path, transcript, config_json, cancelled):
         # trellis/backtracking and actual acoustic boundaries. Only supply a local
         # session explicitly to avoid KFA's model download path.
         worker._kfa_session = CheckedSession()
-        from khmernormalizer.khnormal import khmer_normalize
         # sosap.PyModel is thread-affine. The installed module caches one globally,
         # while each addon job runs on a new native thread. Execute the unchanged
         # normalizer source in a job-local module, so its FST model is constructed
@@ -115,7 +114,7 @@ def align_recording(wav_path, transcript, config_json, cancelled):
         check()
         if result.get('engine') != 'kfa-local' or result.get('directAlignment') is not True:
             raise RuntimeError('KFA did not return direct acoustic alignment')
-        words = adapter.map_words_to_original(transcript, result['words'], khmer_normalize, cancelled)
+        words = adapter.map_words_to_original(transcript, result['words'], cancelled=cancelled)
         payload = {
             'schemaVersion': 1, 'audioSha256': hashlib.sha256(Path(wav_path).read_bytes()).hexdigest(),
             'fullText': transcript, 'engine': 'kfa-local', 'directAlignment': True,
